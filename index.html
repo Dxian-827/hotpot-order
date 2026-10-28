@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>酸汤火锅 · 扫码点单</title>
+<style>
+  :root {
+    --bg: #faf7f2; --card: #fff; --ink: #2b2420; --muted: #8a7f76; --line: #ece5dc;
+    --accent: #c0392b; --accent-ink: #fff; --ok: #2e7d4f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "PingFang SC", "Noto Sans Lao", "Noto Sans", sans-serif;
+         background: var(--bg); color: var(--ink); padding-bottom: 96px; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--accent); color: var(--accent-ink);
+           padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .table { font-size: 15px; background: rgba(255,255,255,.18); padding: 4px 10px; border-radius: 99px; }
+  .tabs { display: flex; gap: 8px; overflow-x: auto; padding: 12px 16px 4px; }
+  .tabs button { flex: none; border: 1px solid var(--line); background: var(--card); padding: 6px 12px;
+                 border-radius: 99px; font-size: 14px; color: var(--ink); }
+  .tabs button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  main { padding: 8px 16px; }
+  .item { display: flex; gap: 12px; background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+          padding: 12px; margin-bottom: 10px; align-items: center; }
+  .item img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; flex: none; }
+  .item .info { flex: 1; min-width: 0; }
+  .item .name { font-size: 15px; line-height: 1.35; }
+  .item .price { color: var(--accent); font-weight: 600; margin-top: 6px; }
+  .qty { display: flex; align-items: center; gap: 8px; flex: none; }
+  .qty button { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--accent); background: var(--card);
+                color: var(--accent); font-size: 20px; line-height: 1; }
+  .qty button.add { background: var(--accent); color: #fff; }
+  .qty span { min-width: 18px; text-align: center; }
+  textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px; font: inherit; min-height: 60px; }
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--line);
+         padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 12px; }
+  .bar .sum { flex: 1; }
+  .bar .sum small { color: var(--muted); display: block; }
+  .bar button { background: var(--accent); color: #fff; border: 0; border-radius: 99px; padding: 12px 22px; font-size: 16px; }
+  .bar button:disabled { opacity: .4; }
+  .msg { text-align: center; padding: 40px 20px; }
+  .msg.ok h2 { color: var(--ok); }
+  .msg h2 { margin: 8px 0; }
+  .msg p { color: var(--muted); }
+  .msg button { margin-top: 16px; background: var(--ink); color: #fff; border: 0; border-radius: 99px; padding: 10px 20px; font-size: 15px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>酸汤火锅 · ແກງສົ້ມ</h1>
+  <span class="table" id="table"></span>
+</header>
+
+<div id="menu-view">
+  <div class="tabs" id="tabs"></div>
+  <main>
+    <div id="list"></div>
+    <p style="color:var(--muted);font-size:13px;margin:16px 0 6px">备注 Note ໝາຍເຫດ</p>
+    <textarea id="note" maxlength="300" placeholder="少辣 / 不要香菜 …"></textarea>
+  </main>
+  <div class="bar">
+    <div class="sum"><strong id="total">0</strong> <span id="cur"></span><small id="count">还没选菜 · ຍັງບໍ່ໄດ້ເລືອກ</small></div>
+    <button id="submit" disabled>下单 ສັ່ງ</button>
+  </div>
+</div>
+
+<div id="status" class="msg hidden"></div>
+
+<script src="config.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const tableId = params.get('t');
+const tableNo = params.get('n') || '?';
+const cart = {};          // product id -> qty
+let menu = null, activeCateg = null;
+
+const $ = id => document.getElementById(id);
+const fmt = n => Math.round(n).toLocaleString('en-US');
+
+function showStatus(cls, html) {
+  $('menu-view').classList.add('hidden');
+  const s = $('status');
+  s.className = 'msg ' + cls;
+  s.innerHTML = html;
+}
+
+function render() {
+  $('tabs').innerHTML = '';
+  if (menu.categories.length > 1) {
+    for (const c of [{ id: null, name: '全部 All' }, ...menu.categories]) {
+      const b = document.createElement('button');
+      b.textContent = c.name;
+      b.className = c.id === activeCateg ? 'on' : '';
+      b.onclick = () => { activeCateg = c.id; render(); };
+      $('tabs').appendChild(b);
+    }
+  }
+  $('list').innerHTML = '';
+  for (const p of menu.products) {
+    if (activeCateg && p.categ_id !== activeCateg) continue;
+    const el = document.createElement('div');
+    el.className = 'item';
+    el.innerHTML = `
+      ${p.image ? `<img src="${p.image}" alt="">` : ''}
+      <div class="info"><div class="name"></div><div class="price">${fmt(p.price)} ${menu.currency}</div></div>
+      <div class="qty">
+        ${cart[p.id] ? `<button class="sub">−</button><span>${cart[p.id]}</span>` : ''}
+        <button class="add">+</button>
+      </div>`;
+    el.querySelector('.name').textContent = p.name;
+    el.querySelector('.add').onclick = () => { cart[p.id] = Math.min((cart[p.id] || 0) + 1, 50); render(); };
+    const sub = el.querySelector('.sub');
+    if (sub) sub.onclick = () => { cart[p.id]--; if (!cart[p.id]) delete cart[p.id]; render(); };
+    $('list').appendChild(el);
+  }
+  let total = 0, count = 0;
+  for (const [id, q] of Object.entries(cart)) {
+    total += menu.products.find(p => p.id == id).price * q;
+    count += q;
+  }
+  $('total').textContent = fmt(total);
+  $('cur').textContent = menu.currency;
+  $('count').textContent = count ? `已选 ${count} 份 · ເລືອກ ${count}` : '还没选菜 · ຍັງບໍ່ໄດ້ເລືອກ';
+  $('submit').disabled = !count;
+}
+
+async function submit() {
+  $('submit').disabled = true;
+  const id = crypto.randomUUID();
+  const order = {
+    id, t: tableId, n: tableNo,
+    items: Object.entries(cart).map(([p, q]) => ({ p: Number(p), q })),
+    note: $('note').value.trim(),
+  };
+  showStatus('', '<h2>正在下单…</h2><p>ກຳລັງສັ່ງ…</p>');
+
+  // 先发订单，再到回执频道轮询电脑的回复（ntfy 会缓存消息，不会错过）
+  const { topic, relay } = window.HOTPOT;
+  try {
+    const res = await fetch(`${relay}/${topic}`, { method: 'POST', body: JSON.stringify(order) });
+    if (!res.ok) throw new Error(res.status);
+  } catch (err) {
+    showStatus('', '<h2>网络不太好，订单没发出去</h2><p>请稍后再试，或叫服务员</p><button onclick="location.reload()">返回 ກັບຄືນ</button>');
+    return;
+  }
+  const deadline = Date.now() + 40000;
+  while (Date.now() < deadline) {
+    await new Promise(ok => setTimeout(ok, 2000));
+    let r = null;
+    try {
+      const text = await (await fetch(`${relay}/${topic}-r${id.replaceAll('-', '').slice(0, 20)}/json?poll=1&since=all`, { cache: 'no-store' })).text();
+      const line = text.trim().split('\n').filter(Boolean).pop();
+      if (line) r = JSON.parse(JSON.parse(line).message);
+    } catch { continue; }
+    if (!r) continue;
+    if (r.ok) {
+      for (const k in cart) delete cart[k];
+      $('note').value = '';
+      showStatus('ok', `<h2>下单成功 ✓</h2><p>单号 ${r.number} · 合计 ${fmt(r.total)} ${menu.currency}<br>ສັ່ງສຳເລັດ, ກະລຸນາລໍຖ້າ</p><button onclick="location.reload()">继续加菜 ສັ່ງເພີ່ມ</button>`);
+    } else {
+      showStatus('', `<h2>下单没成功</h2><p>${r.error || ''}<br>请叫服务员 ກະລຸນາເອີ້ນພະນັກງານ</p><button onclick="location.reload()">返回 ກັບຄືນ</button>`);
+    }
+    return;
+  }
+  showStatus('', '<h2>店里暂时没有回应</h2><p>请叫服务员帮忙下单<br>ກະລຸນາເອີ້ນພະນັກງານ</p>');
+}
+
+(async () => {
+  if (!tableId) {
+    showStatus('', '<h2>请扫桌上的二维码</h2><p>ກະລຸນາສະແກນ QR ເທິງໂຕະ</p>');
+    return;
+  }
+  $('table').textContent = `${tableNo} 号桌 · ໂຕະ ${tableNo}`;
+  try {
+    menu = await (await fetch('menu.json', { cache: 'no-cache' })).json();
+  } catch {
+    showStatus('', '<h2>菜单加载失败</h2><p>请刷新页面</p>');
+    return;
+  }
+  $('submit').onclick = submit;
+  render();
+})();
+</script>
+</body>
+</html>

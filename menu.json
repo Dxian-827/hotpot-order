@@ -1,0 +1,33 @@
+{
+ "currency": "LAK",
+ "categories": [
+  {
+   "id": 3,
+   "name": "套餐 Set ຊຸດ",
+   "sequence": 1
+  }
+ ],
+ "products": [
+  {
+   "id": 14,
+   "name": "酸汤火锅中份(4人) Sour Soup Hotpot M ໝໍ້ໄຟແກງສົ້ມ ຊຸດກາງ",
+   "price": 699000.0,
+   "categ_id": 3,
+   "image": null
+  },
+  {
+   "id": 15,
+   "name": "酸汤火锅大份(6人) Sour Soup Hotpot L ໝໍ້ໄຟແກງສົ້ມ ຊຸດໃຫຍ່",
+   "price": 999000.0,
+   "categ_id": 3,
+   "image": null
+  },
+  {
+   "id": 13,
+   "name": "酸汤火锅小份(2人) Sour Soup Hotpot S ໝໍ້ໄຟແກງສົ້ມ ຊຸດນ້ອຍ",
+   "price": 399000.0,
+   "categ_id": 3,
+   "image": null
+  }
+ ]
+}
